@@ -1,5 +1,6 @@
 import os
 import shutil
+import re
 
 
 # Функция для получения пути из файла path.txt
@@ -9,8 +10,8 @@ def get_paths_from_txt():
     return paths[0].strip(), paths[1].strip()  # Первая строка - исходная папка, вторая - целевая
 
 
-# Функция для перемещения файлов
-def move_invoice_files(source_dir, target_base_dir, template_dir):
+# Функция для копирования файлов
+def copy_invoice_files(source_dir, target_base_dir, template_dir):
     # Путь к файлу .xlsm в папке Template (предполагается, что он один)
     xlsm_file = None
     for file in os.listdir(template_dir):
@@ -22,43 +23,44 @@ def move_invoice_files(source_dir, target_base_dir, template_dir):
         print(f'Ошибка: .xlsm файл не найден в папке {template_dir}')
         return
 
-    # Путь к полному файлу шаблона .xlsm
+    # Полный путь к .xlsm файлу
     xlsm_file_path = os.path.join(template_dir, xlsm_file)
+
+    # Регулярное выражение для поиска инвойсов в формате "invoice ЧИСЛО.xlsx"
+    invoice_pattern = re.compile(r"^invoice (\d+)\.xlsx$", re.IGNORECASE)
 
     # Обрабатываем все папки в исходной директории
     for root, dirs, files in os.walk(source_dir):
         for file in files:
-            # Проверяем, является ли файл инвойсом (Invoice НОМЕР.xlsx)
-            if file.lower().startswith("invoice") and file.lower().endswith(".xlsx"):
-                invoice_number = file.split()[1].replace('.xlsx', '')  # Извлекаем номер инвойса
-                # Ищем папку, в которой будет храниться файл
-                folder_name = root.split(os.sep)[-1]  # Извлекаем имя текущей папки
+            match = invoice_pattern.match(file)  # Проверяем название файла
+            if match:
+                invoice_number = match.group(1)  # Извлекаем число из названия
+
+                # Получаем имя текущей папки
+                folder_name = root.split(os.sep)[-1]
                 folder_parts = folder_name.split(',')
 
-                # Проверяем, что в папке есть хотя бы 4 части (если нет, пропускаем)
+                # Проверяем, что в папке есть хотя бы 4 части (иначе пропускаем)
                 if len(folder_parts) >= 4:
                     app_name = folder_parts[3].strip()  # Извлекаем название приложения (4-я часть после запятой)
 
                     # Формируем путь к целевой папке
                     target_folder = os.path.join(target_base_dir, app_name)
-                    if not os.path.exists(target_folder):
-                        os.makedirs(target_folder)  # Если папка не существует, создаем ее
+                    os.makedirs(target_folder, exist_ok=True)  # Создаём папку, если её нет
 
-                    # Путь для копирования файла инвойса
+                    # Копируем файл инвойса
                     source_file_path = os.path.join(root, file)
                     target_file_path = os.path.join(target_folder, file)
-
-                    # Копируем файл инвойса, а не перемещаем
                     shutil.copy(source_file_path, target_file_path)
-                    print(f'Файл {file} скопирован в {target_file_path}')
+                    print(f'✅ Файл {file} скопирован в {target_file_path}')
 
-                    # Копируем .xlsm файл из папки Template в папку приложения
+                    # Копируем .xlsm файл в папку приложения
                     target_xlsm_file_path = os.path.join(target_folder, xlsm_file)
                     shutil.copy(xlsm_file_path, target_xlsm_file_path)
-                    print(f'Файл {xlsm_file} скопирован в {target_folder}')
+                    print(f'✅ Файл {xlsm_file} скопирован в {target_folder}')
 
                 else:
-                    print(f'Ошибка: папка "{folder_name}" не содержит достаточно частей для извлечения приложения.')
+                    print(f'⚠️ Ошибка: папка "{folder_name}" не содержит достаточно частей для извлечения приложения.')
 
 
 if __name__ == '__main__':
@@ -70,7 +72,7 @@ if __name__ == '__main__':
 
     # Проверяем, существует ли папка с шаблоном
     if not os.path.exists(template_directory):
-        print(f'Ошибка: папка Template не найдена в {template_directory}')
+        print(f'❌ Ошибка: папка Template не найдена в {template_directory}')
     else:
-        # Перемещаем файлы и копируем шаблон
-        move_invoice_files(source_directory, target_base_directory, template_directory)
+        # Копируем файлы инвойсов и шаблон
+        copy_invoice_files(source_directory, target_base_directory, template_directory)
