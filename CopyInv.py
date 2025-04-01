@@ -7,11 +7,26 @@ import re
 def get_paths_from_txt():
     with open('path.txt', 'r') as file:
         paths = file.readlines()
-    return paths[0].strip(), paths[1].strip()  # Первая строка - исходная папка, вторая - целевая
+    
+    source = paths[0].strip()  # Первая строка - исходная папка
+    target = paths[1].strip()  # Вторая строка - целевая папка
+    invoice_range = paths[2].strip() if len(paths) > 2 else None  # Третья строка - диапазон
+    
+    return source, target, invoice_range
+
+
+# Функция для получения диапазона номеров инвойсов
+def get_invoice_range(invoice_range):
+    if invoice_range:
+        match = re.match(r"^(\d+)-(\d+)$", invoice_range)
+        if match:
+            start, end = int(match.group(1)), int(match.group(2))
+            return set(range(start, end + 1))
+    return None
 
 
 # Функция для копирования файлов
-def copy_invoice_files(source_dir, target_base_dir, template_dir):
+def copy_invoice_files(source_dir, target_base_dir, template_dir, invoice_range):
     # Путь к файлу .xlsm в папке Template (предполагается, что он один)
     xlsm_file = None
     for file in os.listdir(template_dir):
@@ -34,7 +49,11 @@ def copy_invoice_files(source_dir, target_base_dir, template_dir):
         for file in files:
             match = invoice_pattern.match(file)  # Проверяем название файла
             if match:
-                invoice_number = match.group(1)  # Извлекаем число из названия
+                invoice_number = int(match.group(1))  # Извлекаем число из названия
+                
+                # Проверяем, входит ли номер в указанный диапазон (если он задан)
+                if invoice_range and invoice_number not in invoice_range:
+                    continue  # Пропускаем файлы, которые не входят в диапазон
 
                 # Получаем имя текущей папки
                 folder_name = root.split(os.sep)[-1]
@@ -54,18 +73,26 @@ def copy_invoice_files(source_dir, target_base_dir, template_dir):
                     shutil.copy(source_file_path, target_file_path)
                     print(f'✅ Файл {file} скопирован в {target_file_path}')
 
-                    # Копируем .xlsm файл в папку приложения
-                    target_xlsm_file_path = os.path.join(target_folder, xlsm_file)
-                    shutil.copy(xlsm_file_path, target_xlsm_file_path)
-                    print(f'✅ Файл {xlsm_file} скопирован в {target_folder}')
+                    # Проверяем, есть ли уже .xlsm файл в целевой папке
+                    xlsm_exists = any(f.lower().endswith(".xlsm") for f in os.listdir(target_folder))
+                    
+                    if not xlsm_exists:
+                        target_xlsm_file_path = os.path.join(target_folder, xlsm_file)
+                        shutil.copy(xlsm_file_path, target_xlsm_file_path)
+                        print(f'✅ Файл {xlsm_file} скопирован в {target_folder}')
+                    else:
+                        print(f'⚠️ Внимание: В папке {target_folder} уже есть .xlsm файл. Копирование пропущено.')
 
                 else:
                     print(f'⚠️ Ошибка: папка "{folder_name}" не содержит достаточно частей для извлечения приложения.')
 
 
 if __name__ == '__main__':
-    # Получаем пути из файла path.txt
-    source_directory, target_base_directory = get_paths_from_txt()
+    # Получаем пути и диапазон из path.txt
+    source_directory, target_base_directory, invoice_range_str = get_paths_from_txt()
+    
+    # Преобразуем диапазон номеров в множество
+    invoice_range_set = get_invoice_range(invoice_range_str)
 
     # Папка с шаблоном (ищем её в той же директории, где находится скрипт)
     template_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Template')
@@ -75,4 +102,4 @@ if __name__ == '__main__':
         print(f'❌ Ошибка: папка Template не найдена в {template_directory}')
     else:
         # Копируем файлы инвойсов и шаблон
-        copy_invoice_files(source_directory, target_base_directory, template_directory)
+        copy_invoice_files(source_directory, target_base_directory, template_directory, invoice_range_set)
